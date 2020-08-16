@@ -29,7 +29,7 @@ class Config:
     port = 8097
     plot_every = 40  # vis every N iter
 
-    # preset
+    # preset    
     data = 'voc'
     pretrained_model = 'vgg16'
 
@@ -47,8 +47,8 @@ class Config:
     test_num = 100
     # test_num = 10000
     # model
-    load_path = None
-    # load_path = '/home/leon/machine_l/models/pytorch/vgg16-397923af.pth'
+    # load_path = None
+    load_path = '/home/leon/machine_l/models/pytorch/vgg16-397923af.pth'
 
     caffe_pretrain = False # use caffe pretrained model instead of torchvision
     caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'

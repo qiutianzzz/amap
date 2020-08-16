@@ -126,7 +126,7 @@ def train(**kwargs):
 
 
 if __name__ == '__main__':
-    train()
-    # import fire
+    # train()
+    import fire
 
-    # fire.Fire()
+    fire.Fire()
