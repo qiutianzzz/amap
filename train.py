@@ -117,6 +117,7 @@ optimizer = optim.Adam(resnet50.parameters())
 def train_and_valid(model, loss_function, optimizer, epochs=25):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     history = []
+    results = []
     best_acc = 0.0
     best_epoch = 0
  
@@ -173,17 +174,21 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
                 valid_loss += loss.item() * inputs.size(0)
  
                 ret, predictions = torch.max(outputs.data, 1)
+                # print ("return:, predictions", ret, predictions)
                 correct_counts = predictions.eq(labels.data.view_as(predictions))
- 
+                # print ("correct_counts", correct_counts)
+                if epoch == (epochs-1):
+                    results.append(predictions.item())
                 acc = torch.mean(correct_counts.type(torch.FloatTensor))
  
                 valid_acc += acc.item() * inputs.size(0)
  
         avg_train_loss = train_loss/train_data_size
         avg_train_acc = train_acc/train_data_size
- 
+
         avg_valid_loss = valid_loss/valid_data_size
         avg_valid_acc = valid_acc/valid_data_size
+        
  
         history.append([avg_train_loss, avg_valid_loss, avg_train_acc, avg_valid_acc])
  
@@ -197,12 +202,13 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
             epoch+1, avg_valid_loss, avg_train_acc*100, avg_valid_loss, avg_valid_acc*100, epoch_end-epoch_start
         ))
         print("Best Accuracy for validation : {:.4f} at epoch {:03d}".format(best_acc, best_epoch))
- 
-        torch.save(model, 'checkpoints/'+'_model_'+str(epoch+1)+'.pt')
-    return model, history
+        if epoch % 10 == 1:
+            torch.save(model, 'checkpoints/'+'_model_'+str(epoch+1)+'.pt')
+    # print ('test_predictions', results)
+    return model, history, results
 
-num_epochs = 3
-trained_model, history = train_and_valid(resnet50, loss_func, optimizer, num_epochs)
+num_epochs = 100
+trained_model, history, results = train_and_valid(resnet50, loss_func, optimizer, num_epochs)
 torch.save(history, 'checkpoints/'+'_history.pt')
  
 history = np.array(history)
@@ -221,3 +227,20 @@ plt.ylabel('Accuracy')
 plt.ylim(0, 1)
 plt.savefig('_accuracy_curve.png')
 # plt.show()
+
+json_path = data_dir+"amap_traffic_annotations_test.json"
+out_path = data_dir+"amap_traffic_annotations_test_result.json"
+
+# result 是你的结果, key是id, value是status
+with open(json_path, "r", encoding="utf-8") as f, open(out_path, "w", encoding="utf-8") as w:
+    json_dict = json.load(f)
+    data_arr = json_dict["annotations"]  
+    new_data_arr = [] 
+    for data in data_arr:
+        id_ = data["id"]
+        id_ = int(id_)-1
+        print(id_)
+        data["status"] = int(results[id_])
+        new_data_arr.append(data)
+    json_dict["annotations"] = new_data_arr
+    json.dump(json_dict, w)
