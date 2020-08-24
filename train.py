@@ -41,7 +41,7 @@ image_transforms = {
 
 IMAGE_SIZE = 512 # 每张小图片的大小
 IMAGE_ROW = 2 # 图片间隔，也就是合并成一张图后，一共有几行
-IMAGE_COLUMN = 2 # 图片间隔，也就是合并成一张图后，一共有几列
+IMAGE_COLUMN = 1 # 图片间隔，也就是合并成一张图后，一共有几列
   
 
 class COMPDataset:
@@ -67,8 +67,8 @@ class COMPDataset:
         cid = content['annotations'][i]
         IMAGE_PATH = self.data_dir + self.img_dir + '/'
         imgfiles = os.listdir(IMAGE_PATH + cid['id'])
-        # key_num, _ = content['annotations'][i]['key_frame'].split('.', 1)
-        # key_num = int(key_num)
+        key_num, _ = content['annotations'][i]['key_frame'].split('.', 1)
+        key_num = int(key_num)
         # img_frames = content['annotations'][i]['frames']
         img_nums = len(imgfiles)
         to_image = Image.new('RGB', (IMAGE_COLUMN * IMAGE_SIZE, IMAGE_ROW * IMAGE_SIZE))
@@ -96,7 +96,7 @@ class COMPDataset:
         else:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
-                    from_image = Image.open(IMAGE_PATH  + cid['id'] +'/'+ imgfiles[img_nums - (IMAGE_COLUMN *(y-1) + x)]).resize(
+                    from_image = Image.open(IMAGE_PATH  + cid['id'] +'/'+ imgfiles[key_num +y - 3]).resize(
                         (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
                     to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
         img = self.transform(to_image)
@@ -278,7 +278,7 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
     # print ('test_predictions', results)
     return model, history, results
 
-num_epochs = 50
+num_epochs = 25
 trained_model, history, results = train_and_valid(resnet50, loss_func, optimizer, num_epochs)
 torch.save(history, 'checkpoints/'+'_history.pt')
  
