@@ -1,12 +1,39 @@
 import PIL.Image as Image
 import os
+from torchvision import datasets, models, transforms
+import json
   
-data_dir = 'C:\\AAA\\Add-Tech\\database\\amap\\' # 图片集地址
+data_dir = '/home/leon/machine_l/database/amap/'
+
+
+AMAP_LABEL_NAMES = (
+    'unblocked',
+    'slow',
+    'blocked',
+    )
+
+image_transforms = {
+    'train': transforms.Compose([
+        transforms.RandomResizedCrop(size=256, scale=(0.8, 1.0)),
+        transforms.RandomRotation(degrees=15),
+        transforms.RandomHorizontalFlip(),
+        transforms.CenterCrop(size=224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225])
+    ]),
+    'valid': transforms.Compose([
+        transforms.Resize(size=256),
+        transforms.CenterCrop(size=224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225])
+    ])
+}
 
 IMAGE_SIZE = 512 # 每张小图片的大小
 IMAGE_ROW = 2 # 图片间隔，也就是合并成一张图后，一共有几行
 IMAGE_COLUMN = 2 # 图片间隔，也就是合并成一张图后，一共有几列
-IMAGE_SAVE_PATH = 'final.jpg' # 图片转换后的地址
   
 
 class COMPDataset:
@@ -30,7 +57,7 @@ class COMPDataset:
             content=f.read()
         content=json.loads(content)
         cid = content['annotations'][i]
-        IMAGE_PATH = self.data_dir + self.img_dir
+        IMAGE_PATH = self.data_dir + self.img_dir + '/'
         imgfiles = os.listdir(IMAGE_PATH + cid['id'])
         # key_num, _ = content['annotations'][i]['key_frame'].split('.', 1)
         # key_num = int(key_num)
@@ -40,31 +67,32 @@ class COMPDataset:
         if img_nums == 1:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
-                    from_image = Image.open(IMAGE_PATH + imgfiles[0]).resize(
+                    from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[0]).resize(
                         (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
                     to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
         
         elif img_nums == 2:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
-                    from_image = Image.open(IMAGE_PATH + imgfiles[y-1]).resize(
+                    from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[y-1]).resize(
                         (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
                     to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
         
         elif img_nums == 3:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
-                    from_image = Image.open(IMAGE_PATH + imgfiles[y]).resize(
+                    from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[y]).resize(
                         (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
                     to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
         
         else:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
-                    from_image = Image.open(IMAGE_PATH + imgfiles[img_nums - (IMAGE_COLUMN *(y-1) + x-1)]).resize(
+                    from_image = Image.open(IMAGE_PATH  + cid['id'] +'/'+ imgfiles[img_nums - (IMAGE_COLUMN *(y-1) + x)]).resize(
                         (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
                     to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
-        img = self.transform(to_image)
+        # img = self.transform(to_image)
+        img = to_image
         label = (cid['status'])+1
         return img, label
 
@@ -72,25 +100,14 @@ class COMPDataset:
         return len(self.ids)
 
     __getitem__ = get_example
-        
 
-
-# 获取图片集地址下的所有图片名称
-image_names = [name for name in os.listdir(IMAGES_PATH) for item in IMAGES_FORMAT if
-    os.path.splitext(name)[1] == item]
-  
-# 简单的对于参数的设定和实际图片集的大小进行数量判断
-if len(image_names) != IMAGE_ROW * IMAGE_COLUMN:
- raise ValueError("合成图片的参数和要求的数量不能匹配！")
-  
-# 定义图像拼接函数
-def image_compose():
- to_image = Image.new('RGB', (IMAGE_COLUMN * IMAGE_SIZE, IMAGE_ROW * IMAGE_SIZE)) #创建一个新图
- # 循环遍历，把每张图片按顺序粘贴到对应位置上
- for y in range(1, IMAGE_ROW + 1):
-  for x in range(1, IMAGE_COLUMN + 1):
-   from_image = Image.open(IMAGES_PATH + image_names[IMAGE_COLUMN * (y - 1) + x - 1]).resize(
-    (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
-   to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
- return to_image.save(IMAGE_SAVE_PATH) # 保存新图
-image_compose() #调用函数
+data = COMPDataset('amap_traffic_train_0712', transform = None)
+im, _ = data.get_example(10)
+# unloader = transforms.ToPILImage()
+# image = im.cpu().clone()  # clone the tensor
+# image = im
+# image = image.squeeze(0)  # remove the fake batch dimension
+# image = unloader(image)
+# image.save('example.jpg')
+# im = Image.open('example.jpg')
+im.show()
