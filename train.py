@@ -1,4 +1,5 @@
 import torch
+import math
 from torchvision import datasets, models, transforms
 import torch.nn as nn
 import torch.optim as optim
@@ -13,6 +14,11 @@ from torch.autograd import Variable
 
 data_dir = '/home/leon/machine_l/database/amap/'
 
+IMAGE_SIZE_IN = 224
+IMAGE_SIZE_W = 1024
+IMAGE_SIZE_H = 512
+IMAGE_ROW = 2 # 图片间隔，也就是合并成一张图后，一共有几行
+IMAGE_COLUMN = 1 # 图片间隔，也就是合并成一张图后，一共有几列
 
 AMAP_LABEL_NAMES = (
     'unblocked',
@@ -22,26 +28,24 @@ AMAP_LABEL_NAMES = (
 
 image_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(size=256, scale=(0.8, 1.0)),
+        transforms.RandomResizedCrop(size=IMAGE_SIZE_H, scale=(0.8, 1.0)),
         transforms.RandomRotation(degrees=15),
         transforms.RandomHorizontalFlip(),
-        transforms.CenterCrop(size=224),
+        transforms.CenterCrop(size=IMAGE_SIZE_IN),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
     ]),
     'valid': transforms.Compose([
-        transforms.Resize(size=256),
-        transforms.CenterCrop(size=224),
+        transforms.Resize(size=IMAGE_SIZE_H),
+        transforms.CenterCrop(size=IMAGE_SIZE_IN),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
     ])
 }
 
-IMAGE_SIZE = 512 # 每张小图片的大小
-IMAGE_ROW = 2 # 图片间隔，也就是合并成一张图后，一共有几行
-IMAGE_COLUMN = 1 # 图片间隔，也就是合并成一张图后，一共有几列
+
   
 
 class COMPDataset:
@@ -71,34 +75,34 @@ class COMPDataset:
         key_num = int(key_num)
         # img_frames = content['annotations'][i]['frames']
         img_nums = len(imgfiles)
-        to_image = Image.new('RGB', (IMAGE_COLUMN * IMAGE_SIZE, IMAGE_ROW * IMAGE_SIZE))
+        to_image = Image.new('RGB', (IMAGE_COLUMN * IMAGE_SIZE_W, IMAGE_ROW * IMAGE_SIZE_H))
         if img_nums == 1:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
                     from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[0]).resize(
-                        (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
-                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
+                        (IMAGE_SIZE_W, IMAGE_SIZE_H),Image.ANTIALIAS)
+                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE_W, (y - 1) * IMAGE_SIZE_H))
         
         elif img_nums == 2:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
                     from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[y-1]).resize(
-                        (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
-                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
+                        (IMAGE_SIZE_W, IMAGE_SIZE_H),Image.ANTIALIAS)
+                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE_W, (y - 1) * IMAGE_SIZE_H))
         
         elif img_nums == 3:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
                     from_image = Image.open(IMAGE_PATH + cid['id'] +'/'+ imgfiles[y]).resize(
-                        (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
-                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
+                        (IMAGE_SIZE_W, IMAGE_SIZE_H),Image.ANTIALIAS)
+                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE_W, (y - 1) * IMAGE_SIZE_H))
         
         else:
             for y in range(1, IMAGE_ROW + 1):
                 for x in range(1, IMAGE_COLUMN + 1):
                     from_image = Image.open(IMAGE_PATH  + cid['id'] +'/'+ imgfiles[key_num +y - 3]).resize(
-                        (IMAGE_SIZE, IMAGE_SIZE),Image.ANTIALIAS)
-                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE, (y - 1) * IMAGE_SIZE))
+                        (IMAGE_SIZE_W, IMAGE_SIZE_H),Image.ANTIALIAS)
+                    to_image.paste(from_image, ((x - 1) * IMAGE_SIZE_W, (y - 1) * IMAGE_SIZE_H))
         img = self.transform(to_image)
         label = (cid['status'])+1
         return img, label
@@ -148,20 +152,22 @@ class AMAPDataset:
     __getitem__ = get_example
 
  
-batch_size = 32
-num_classes = 3
-
-# train_dataset = AMAPDataset(img_dir = 'amap_traffic_train_0712',transform = image_transforms['train'])
-# valid_dataset = AMAPDataset(img_dir = 'amap_traffic_test_0712',transform = image_transforms['valid'])
-train_dataset = COMPDataset(img_dir = 'amap_traffic_train_0712',transform = image_transforms['train'])
-valid_dataset = COMPDataset(img_dir = 'amap_traffic_test_0712',transform = image_transforms['valid'])
+batch_size = 64
+num_classes = 4
+print ('image size, batch size, classes', IMAGE_SIZE_IN, batch_size, num_classes)
+print('one pic')
+train_dataset = AMAPDataset(img_dir = 'amap_traffic_train_0712',transform = image_transforms['train'])
+valid_dataset = AMAPDataset(img_dir = 'amap_traffic_test_0712',transform = image_transforms['valid'])
+# print('2 composed pics')
+# train_dataset = COMPDataset(img_dir = 'amap_traffic_train_0712',transform = image_transforms['train'])
+# valid_dataset = COMPDataset(img_dir = 'amap_traffic_test_0712',transform = image_transforms['valid'])
 #设置batch size = 64
 print(train_dataset.__len__())
 
 train_data_size = len(train_dataset)
 valid_data_size = len(valid_dataset)
 
-train_data = DataLoader(dataset=train_dataset, batch_size=32, shuffle=True)
+train_data = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
 valid_data = DataLoader(dataset=valid_dataset)
 print(train_data.__len__())
 
@@ -170,12 +176,15 @@ resnet50 = models.resnet50(pretrained=True)
 for param in resnet50.parameters():
     param.requires_grad = False
 
+f = lambda x:math.ceil(x /32 - 7 + 1)
+
+# resnet50.avgpool = nn.AvgPool2d(7, stride=1)
 fc_inputs = resnet50.fc.in_features
 resnet50.fc = nn.Sequential(
-    nn.Linear(fc_inputs, 256),
+    nn.Linear(fc_inputs* f(IMAGE_SIZE_IN) * f(IMAGE_SIZE_IN), 512),
     nn.ReLU(),
     nn.Dropout(0.4),
-    nn.Linear(256, 10),
+    nn.Linear(512, num_classes),
     nn.LogSoftmax(dim=1)
 )
 
@@ -204,7 +213,7 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
         valid_acc = 0.0
  
         for i, (inputs, labels) in enumerate(train_data):
-            print(i)
+            # print(i)
             # inputs = inputs.to(device)
             inputs = Variable(inputs.cuda())
             labels = Variable(labels.cuda())
@@ -243,7 +252,12 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
                 loss = loss_function(outputs, labels)
  
                 valid_loss += loss.item() * inputs.size(0)
- 
+
+                # dim=1 表示按行计算 即对每一行进行softmax
+                # probability = torch.nn.functional.softmax(outputs,dim=1)[:,1].tolist()
+                # probability = [1 if prob >= 0.5 else 0 for prob in probability]
+                # 返回最大值的索引
+                # probability = torch.max(outputs, dim=1)[1].data.cpu().numpy().squeeze()
                 ret, predictions = torch.max(outputs.data, 1)
                 # print ("return:, predictions", ret, predictions)
                 correct_counts = predictions.eq(labels.data.view_as(predictions))
@@ -278,7 +292,7 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
     # print ('test_predictions', results)
     return model, history, results
 
-num_epochs = 25
+num_epochs = 50
 trained_model, history, results = train_and_valid(resnet50, loss_func, optimizer, num_epochs)
 torch.save(history, 'checkpoints/'+'_history.pt')
  
@@ -300,7 +314,7 @@ plt.savefig('_accuracy_curve.png')
 # plt.show()
 
 json_path = data_dir+"amap_traffic_annotations_test.json"
-out_path = data_dir+"amap_traffic_annotations_test_result.json"
+out_path = "amap_traffic_annotations_test_result.json"
 
 # result 是你的结果, key是id, value是status
 with open(json_path, "r", encoding="utf-8") as f, open(out_path, "w", encoding="utf-8") as w:
@@ -310,8 +324,11 @@ with open(json_path, "r", encoding="utf-8") as f, open(out_path, "w", encoding="
     for data in data_arr:
         id_ = data["id"]
         id_ = int(id_)-1
-        print(id_)
+        # print(id_)
         data["status"] = int(results[id_])
         new_data_arr.append(data)
     json_dict["annotations"] = new_data_arr
     json.dump(json_dict, w)
+
+
+# 加label smooth
