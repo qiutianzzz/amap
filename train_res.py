@@ -1,154 +1,55 @@
-import torch
-import torch.nn as nn
-import torchvision
-import numpy as np
-import copy
-from torch.autograd import Variable
-from torch.utils import model_zoo
+from __future__ import  absolute_import
+import os
+
+import ipdb
+import matplotlib
+from tqdm import tqdm
+
 from utils.config import opt
-from data.amapdata import Dataset, TestDataset, inverse_normalize
+from data.dataset import Dataset, TestDataset, inverse_normalize
+from model import FasterRCNNVGG16
 from torch.utils import data as data_
- 
-print("PyTorch Version: ",torch.__version__)
-print("Torchvision Version: ",torchvision.__version__)
- 
-__all__ = ['ResNet50', 'ResNet101','ResNet152']
- 
-def Conv1(in_planes, places, stride=2):
-  return nn.Sequential(
-    nn.Conv2d(in_channels=in_planes,out_channels=places,kernel_size=7,stride=stride,padding=3, bias=False),
-    nn.BatchNorm2d(places),
-    nn.ReLU(inplace=True),
-    nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-  )
- 
-class Bottleneck(nn.Module):
-    def __init__(self,in_places,places, stride=1,downsampling=False, expansion = 4):
-      super(Bottleneck,self).__init__()
-      self.expansion = expansion
-      self.downsampling = downsampling
-  
-      self.bottleneck = nn.Sequential(
-        nn.Conv2d(in_channels=in_places,out_channels=places,kernel_size=1,stride=1, bias=False),
-        nn.BatchNorm2d(places),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(in_channels=places, out_channels=places, kernel_size=3, stride=stride, padding=1, bias=False),
-        nn.BatchNorm2d(places),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(in_channels=places, out_channels=places*self.expansion, kernel_size=1, stride=1, bias=False),
-        nn.BatchNorm2d(places*self.expansion),
-      )
-  
-      if self.downsampling:
-        self.downsample = nn.Sequential(
-          nn.Conv2d(in_channels=in_places, out_channels=places*self.expansion, kernel_size=1, stride=stride, bias=False),
-          nn.BatchNorm2d(places*self.expansion)
-        )
-      self.relu = nn.ReLU(inplace=True)
-    def forward(self, x):
-      residual = x
-      out = self.bottleneck(x)
-  
-      if self.downsampling:
-        residual = self.downsample(x)
-  
-      out += residual
-      out = self.relu(out)
-      return out
- 
+from trainer import FasterRCNNTrainer
+from utils import array_tool as at
+from utils.vis_tool import visdom_bbox
+from utils.eval_tool import eval_detection_voc
 
-class ResNet(nn.Module):
-    def __init__(self,blocks, num_classes=3, expansion = 4):
-      super(ResNet,self).__init__()
-      self.expansion = expansion
-  
-      self.conv1 = Conv1(in_planes = 3, places= 64)
-  
-      self.layer1 = self.make_layer(in_places = 64, places= 64, block=blocks[0], stride=1)
-      self.layer2 = self.make_layer(in_places = 256,places=128, block=blocks[1], stride=2)
-      self.layer3 = self.make_layer(in_places=512,places=256, block=blocks[2], stride=2)
-      self.layer4 = self.make_layer(in_places=1024,places=512, block=blocks[3], stride=2)
-  
-      self.avgpool = nn.AvgPool2d(7, stride=1)
-      self.fc = nn.Linear(2048,num_classes)
-  
-      for m in self.modules():
-        if isinstance(m, nn.Conv2d):
-          nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-        elif isinstance(m, nn.BatchNorm2d):
-          nn.init.constant_(m.weight, 1)
-          nn.init.constant_(m.bias, 0)
-  
-    def make_layer(self, in_places, places, block, stride):
-      layers = []
-      layers.append(Bottleneck(in_places, places,stride, downsampling =True))
-      for i in range(1, block):
-        layers.append(Bottleneck(places*self.expansion, places))
-  
-      return nn.Sequential(*layers)
+# fix for ulimit
+# https://github.com/pytorch/pytorch/issues/973#issuecomment-346405667
+import resource
 
-    def forward(self, x):
-      x = self.conv1(x)
-  
-      x = self.layer1(x)
-      x = self.layer2(x)
-      x = self.layer3(x)
-      x = self.layer4(x)
-  
-      x = self.avgpool(x)
-      x = x.view(x.size(0), -1)
-      x = self.fc(x)
-      # add the softmax classification 
-      return x
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 
-    # def get_optimizer(self):
-    #     """
-    #     return optimizer, It could be overwriten if you want to specify 
-    #     special optimizer
-    #     """
-    #     lr = opt.lr
-    #     params = []
-    #     for key, value in dict(self.named_parameters()).items():
-    #         if value.requires_grad:
-    #             if 'bias' in key:
-    #                 params += [{'params': [value], 'lr': lr * 2, 'weight_decay': 0}]
-    #             else:
-    #                 params += [{'params': [value], 'lr': lr, 'weight_decay': opt.weight_decay}]
-    #     if opt.use_adam:
-    #         self.optimizer = t.optim.Adam(params)
-    #     else:
-    #         self.optimizer = t.optim.SGD(params, momentum=0.9)
-    #     return self.optimizer
-
-    # def scale_lr(self, decay=0.1):
-    #     for param_group in self.optimizer.param_groups:
-    #         param_group['lr'] *= decay
-    #     return self.optimizer
+matplotlib.use('agg')
 
 
-def ResNet50(pretrained = False):
-    model = ResNet([3, 4, 6, 3])
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
-    return model
- 
-def ResNet101(pretrained = False):
-    model = ResNet([3, 4, 23, 3])
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet101']))
-    return model
- 
-def ResNet152(pretrained = False):
-    model = ResNet([3, 8, 36, 3])
-    if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet152']))
-    return model
+def eval(dataloader, faster_rcnn, test_num=10000):
+    pred_bboxes, pred_labels, pred_scores = list(), list(), list()
+    gt_bboxes, gt_labels, gt_difficults = list(), list(), list()
+    for ii, (imgs, sizes, gt_bboxes_, gt_labels_, gt_difficults_) in tqdm(enumerate(dataloader)):
+        sizes = [sizes[0][0].item(), sizes[1][0].item()]
+        pred_bboxes_, pred_labels_, pred_scores_ = faster_rcnn.predict(imgs, [sizes])
+        gt_bboxes += list(gt_bboxes_.numpy())
+        gt_labels += list(gt_labels_.numpy())
+        gt_difficults += list(gt_difficults_.numpy())
+        pred_bboxes += pred_bboxes_
+        pred_labels += pred_labels_
+        pred_scores += pred_scores_
+        if ii == test_num: break
 
-def train_model(model, criterion, optimizer, scheduler, **kwargs):
+    result = eval_detection_voc(
+        pred_bboxes, pred_labels, pred_scores,
+        gt_bboxes, gt_labels, gt_difficults,
+        use_07_metric=True)
+    return result
+
+
+def train(**kwargs):
+    print (kwargs)
     opt._parse(kwargs)
 
     dataset = Dataset(opt)
-    print(dataset)
     print('load data')
     dataloader = data_.DataLoader(dataset, \
                                   batch_size=1, \
@@ -162,103 +63,72 @@ def train_model(model, criterion, optimizer, scheduler, **kwargs):
                                        shuffle=False, \
                                        pin_memory=True
                                        )
-    data_loaders = {'train': dataloader, 'val': test_dataloader}                        
-    Loss_list = {'train': [], 'val': []}
-    Accuracy_list_species = {'train': [], 'val': []}
-    Accuracy_list_classes = {'train': [], 'val': []}
-     
-    best_model_wts = copy.deepcopy(model.state_dict())
-    best_class_acc = 0.0
-    best_specy_acc = 0.0
-    best_acc = 0.0
-    best_loss = 10000
-    
-    #epoch循环训练
+    faster_rcnn = FasterRCNNVGG16()
+    print('model construct completed')
+    trainer = FasterRCNNTrainer(faster_rcnn).cuda()
+    if opt.load_path:
+        trainer.load(opt.load_path)
+        print('load pretrained model from %s' % opt.load_path)
+    trainer.vis.text(dataset.db.label_names, win='labels')
+    best_map = 0
+    lr_ = opt.lr
     for epoch in range(opt.epoch):
-        print('epoch {}/{}'.format(epoch,opt.epoch - 1))
-        print('-*' * 10)
-        
-        # 每个epoch都有train(训练)和val(测试)两个阶段
-        for phase in ['train', 'val']:
-            if phase == 'train':
-                model.train()
-            else:
-                model.eval()
-            running_loss = 0.0
-            corrects_classes = 0
-            corrects_species = 0
-            
-            for idx, (img, label, scale) in enumerate(data_loaders[phase]):
-                
-                #将数据存在gpu上
-                inputs = Variable(img.cuda())
-                inputs = inputs.type(torch.cuda.FloatTensor)
-                labels_classes = Variable(label.cuda())
-                labels_classes = labels_classes.type(torch.cuda.FloatTensor)
-                # labels_species = Variable(data['species'].cuda())
-                optimizer.zero_grad()
-                
-                #训练阶段
-                with torch.set_grad_enabled(phase == 'train'):
-                    x_classes = model(inputs)                    
-                    _, preds_classes = torch.max(x_classes, 1)      
-                    # _, preds_species = torch.max(x_species, 1)
-                    #计算训练误差
-                    loss = criterion(x_classes, labels_classes)
-                    
-                    if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
+        trainer.reset_meters()
+        for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader)):
+            scale = at.scalar(scale)
+            img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda()
+            trainer.train_step(img, bbox, label, scale)
 
-                running_loss += loss.item() * inputs.size(0)          
-                corrects_classes += torch.sum(preds_classes == labels_classes)
-                # corrects_species += torch.sum(preds_species == labels_species)
+            if (ii + 1) % opt.plot_every == 0:
+                # if os.path.exists(opt.debug_file):
+                #     ipdb.set_trace()
 
-            epoch_loss = running_loss / len(data_loaders[phase].dataset)
-            Loss_list[phase].append(epoch_loss)
-            epoch_acc_classes = corrects_classes.double() / len(data_loaders[phase].dataset)
-            # epoch_acc_species = corrects_species.double() / len(data_loaders[phase].dataset)
+                # plot loss
+                trainer.vis.plot_many(trainer.get_meter_data())
 
-            Accuracy_list_classes[phase].append(100 * epoch_acc_classes)
-            # Accuracy_list_species[phase].append(100 * epoch_acc_species)
-            print('{} Loss: {:.4f}  Acc_classes: {:.2%}'
-                  .format(phase, epoch_loss,epoch_acc_classes))
+                # plot groud truth bboxes
+                ori_img_ = inverse_normalize(at.tonumpy(img[0]))
+                gt_img = visdom_bbox(ori_img_,
+                                     at.tonumpy(bbox_[0]),
+                                     at.tonumpy(label_[0]))
+                trainer.vis.img('gt_img', gt_img)
 
-            #测试阶段
-            if phase == 'val':
-                #如果当前epoch下的准确率总体提高或者误差下降，则认为当下的模型最优
-                if epoch_acc_classes > best_acc or epoch_loss < best_loss:
-                    best_acc_classes = epoch_acc_classes
-                    # best_acc_species = epoch_acc_species
-                    best_acc = best_acc_classes
-                    best_loss = epoch_loss
-                    best_model_wts = copy.deepcopy(model.state_dict())
-                    print('Best_model:  classes Acc: {:.2%}'
-                          .format(best_acc_classes))
+                # plot predicti bboxes
+                _bboxes, _labels, _scores = trainer.faster_rcnn.predict([ori_img_], visualize=True)
+                pred_img = visdom_bbox(ori_img_,
+                                       at.tonumpy(_bboxes[0]),
+                                       at.tonumpy(_labels[0]).reshape(-1),
+                                       at.tonumpy(_scores[0]))
+                trainer.vis.img('pred_img', pred_img)
 
-    model.load_state_dict(best_model_wts)
-    torch.save(model.state_dict(), 'best_model.pt')
-    print('Best_model:  classes Acc: {:.2%}'
-          .format(best_acc_classes))
-    return model, Loss_list,Accuracy_list_classes
+                # rpn confusion matrix(meter)
+                trainer.vis.text(str(trainer.rpn_cm.value().tolist()), win='rpn_cm')
+                # roi confusion matrix
+                trainer.vis.img('roi_cm', at.totensor(trainer.roi_cm.conf, False).float())
+        eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
+        trainer.vis.plot('test_map', eval_result['map'])
+        lr_ = trainer.faster_rcnn.optimizer.param_groups[0]['lr']
+        log_info = 'lr:{}, map:{},loss:{}'.format(str(lr_),
+                                                  str(eval_result['map']),
+                                                  str(trainer.get_meter_data()))
+        trainer.vis.log(log_info)
+
+        if eval_result['map'] > best_map:
+            best_map = eval_result['map']
+            best_path = trainer.save(best_map=best_map)
+        if epoch == 9:
+            trainer.load(best_path)
+            trainer.faster_rcnn.scale_lr(opt.lr_decay)
+            lr_ = lr_ * opt.lr_decay
+
+        if epoch == 13: 
+            break
+
 
 if __name__ == '__main__':
-    
-  net = ResNet50()
-  network = net.cuda()
-  optimizer = torch.optim.SGD(network.parameters(), lr=0.01, momentum=0.9)
-  # criterion = nn.CrossEntropyLoss()
-  criterion = labels.squeeze(1)
-  exp_lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1) # Decay LR by a factor of 0.1 every 1 epochs
-  model, Loss_list, Accuracy_list_classes = train_model(network, criterion, optimizer, exp_lr_scheduler)
-# if __name__=='__main__':
-  #model = torchvision.models.resnet50()
-  # model = ResNet50()
-#   print(model)
- 
-# change the input to the amap images 
-  # input = torch.randn(1, 3, 224, 224)
-  # out = model(input)
-  # print(out)
+    train()
+    # import fire
+
+    # fire.Fire()
 
 # where is the optimizer? feedback? backpropogation?

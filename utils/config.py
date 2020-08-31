@@ -14,8 +14,8 @@ class Config:
     test_num_workers = 8
 
     # sigma for l1_smooth_loss
-    rpn_sigma = 3.
-    roi_sigma = 1.
+    # rpn_sigma = 3.
+    # roi_sigma = 1.
 
     # param for optimizer
     # 0.0005 in origin paper but 0.0001 in tf-faster-rcnn
@@ -25,7 +25,7 @@ class Config:
 
 
     # visualization
-    env = 'faster-rcnn'  # visdom env
+    # env = 'faster-rcnn'  # visdom env
     port = 8097
     plot_every = 40  # vis every N iter
 

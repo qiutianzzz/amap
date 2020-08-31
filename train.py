@@ -15,8 +15,8 @@ from torch.autograd import Variable
 data_dir = '/home/leon/machine_l/database/amap/'
 
 IMAGE_SIZE_IN = 224
-IMAGE_SIZE_W = 1024
-IMAGE_SIZE_H = 512
+IMAGE_SIZE_W = 896
+IMAGE_SIZE_H = 448
 IMAGE_ROW = 2 # 图片间隔，也就是合并成一张图后，一共有几行
 IMAGE_COLUMN = 1 # 图片间隔，也就是合并成一张图后，一共有几列
 
@@ -28,7 +28,7 @@ AMAP_LABEL_NAMES = (
 
 image_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(size=IMAGE_SIZE_H, scale=(0.8, 1.0)),
+        transforms.RandomResizedCrop(size=512, scale=(0.8, 1.0)),
         transforms.RandomRotation(degrees=15),
         transforms.RandomHorizontalFlip(),
         transforms.CenterCrop(size=IMAGE_SIZE_IN),
@@ -37,7 +37,7 @@ image_transforms = {
                              [0.229, 0.224, 0.225])
     ]),
     'valid': transforms.Compose([
-        transforms.Resize(size=IMAGE_SIZE_H),
+        transforms.Resize(size=512),
         transforms.CenterCrop(size=IMAGE_SIZE_IN),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
@@ -152,9 +152,9 @@ class AMAPDataset:
     __getitem__ = get_example
 
  
-batch_size = 64
+batch_size = 32
 num_classes = 4
-print ('image size, batch size, classes', IMAGE_SIZE_IN, batch_size, num_classes)
+print ('image size：%d, batch size:%d, classes:%d' %(IMAGE_SIZE_IN, batch_size, num_classes))
 print('one pic')
 train_dataset = AMAPDataset(img_dir = 'amap_traffic_train_0712',transform = image_transforms['train'])
 valid_dataset = AMAPDataset(img_dir = 'amap_traffic_test_0712',transform = image_transforms['valid'])
@@ -171,28 +171,31 @@ train_data = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=Tr
 valid_data = DataLoader(dataset=valid_dataset)
 print(train_data.__len__())
 
-resnet50 = models.resnet50(pretrained=True)
+# resnet50 = models.resnet50(pretrained=True)
+RESNET = models.resnet152(pretrained=True)
 
-for param in resnet50.parameters():
+
+for param in RESNET.parameters():
     param.requires_grad = False
 
 f = lambda x:math.ceil(x /32 - 7 + 1)
 
 # resnet50.avgpool = nn.AvgPool2d(7, stride=1)
-fc_inputs = resnet50.fc.in_features
-resnet50.fc = nn.Sequential(
-    nn.Linear(fc_inputs* f(IMAGE_SIZE_IN) * f(IMAGE_SIZE_IN), 512),
+fc_inputs = RESNET.fc.in_features
+RESNET.fc = nn.Sequential(
+    # nn.Linear(fc_inputs* f(IMAGE_SIZE_W) * f(IMAGE_SIZE_H), num_classes)
+    nn.Linear(fc_inputs, 512),
     nn.ReLU(),
     nn.Dropout(0.4),
     nn.Linear(512, num_classes),
     nn.LogSoftmax(dim=1)
 )
 
-resnet50 = resnet50.to('cuda:0')
+RESNET = RESNET.to('cuda:0')
 
 
 loss_func = nn.NLLLoss()
-optimizer = optim.Adam(resnet50.parameters())
+optimizer = optim.Adam(RESNET.parameters())
 
 def train_and_valid(model, loss_function, optimizer, epochs=25):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -293,7 +296,7 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
     return model, history, results
 
 num_epochs = 50
-trained_model, history, results = train_and_valid(resnet50, loss_func, optimizer, num_epochs)
+trained_model, history, results = train_and_valid(RESNET, loss_func, optimizer, num_epochs)
 torch.save(history, 'checkpoints/'+'_history.pt')
  
 history = np.array(history)
@@ -314,7 +317,7 @@ plt.savefig('_accuracy_curve.png')
 # plt.show()
 
 json_path = data_dir+"amap_traffic_annotations_test.json"
-out_path = "amap_traffic_annotations_test_result.json"
+out_path = "./log/amap_traffic_annotations_test_result.json"
 
 # result 是你的结果, key是id, value是status
 with open(json_path, "r", encoding="utf-8") as f, open(out_path, "w", encoding="utf-8") as w:
