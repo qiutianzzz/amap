@@ -29,8 +29,9 @@ AMAP_LABEL_NAMES = (
 image_transforms = {
     'train': transforms.Compose([
         transforms.RandomResizedCrop(size=512, scale=(0.8, 1.0)),
-        transforms.RandomRotation(degrees=15),
+        transforms.RandomRotation(degrees=30),
         transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=1, contrast=1, hue=0.5),
         transforms.CenterCrop(size=IMAGE_SIZE_IN),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
@@ -233,9 +234,11 @@ def train_and_valid(model, loss_function, optimizer, epochs=25):
             loss.backward()
  
             optimizer.step()
-            # print(inputs.size(0))
+            
+            # 表示为4维的图像tensor中，第一维默认为batchSize,
+            # 第二维为channel（通道），第三维为height（图片的高），第四维为width（图片的宽）
             train_loss += loss.item() * inputs.size(0)
- 
+            # torch.max(input, dim) 函数
             ret, predictions = torch.max(outputs.data, 1)
             correct_counts = predictions.eq(labels.data.view_as(predictions))
  
