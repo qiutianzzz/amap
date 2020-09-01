@@ -31,7 +31,8 @@ image_transforms = {
         transforms.RandomResizedCrop(size=512, scale=(0.8, 1.0)),
         transforms.RandomRotation(degrees=30),
         transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=1, contrast=1, hue=0.5),
+        #作用不大
+        # transforms.ColorJitter(brightness=1, contrast=1, hue=0.5),
         transforms.CenterCrop(size=IMAGE_SIZE_IN),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
